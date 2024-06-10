@@ -104,6 +104,9 @@ public:
 #endif // _WIN32
     //
     std::ostream *os_;
+
+    Signal<bool(const controllerState &left, const controllerState &right)> updateControllerState;;
+    Signal<void(coordinates &headOrigin)> requestHeadOrigin;
 };
 
 //// >>>> Impl
@@ -123,9 +126,9 @@ void OpenVRPlugin::Impl::initialize()
     os_ = &(MessageView::instance()->cout(false));
 
 #ifdef _WIN32
-    origin.pos << 2.0, 0.0, 0.0;
+    origin.pos << -3.0, 0.0, 0.0;
     {
-        Quaternion q(0.5, 0.5, 0.5, 0.5);
+        Quaternion q(0.5, 0.5, -0.5, -0.5);
         origin_to_HMD.set(q);
     }
 
@@ -233,6 +236,8 @@ void OpenVRPlugin::Impl::singleLoop()
 
         /// update camera pose
         // set_camera
+        impl->requestHeadOrigin(origin);
+
         coordinates cds = origin;
         cds.transform(origin_to_HMD);
         cds.transform(HMD_coords);
@@ -404,6 +409,8 @@ void OpenVRPlugin::Impl::updatePoses()
         }
     }
 
+    impl->updateControllerState(state_L, state_R);
+
     vr::VREvent_t event;
     while( m_pHMD->PollNextEvent( &event, sizeof( event ) ) ) {
         switch( event.eventType ) {
@@ -471,6 +478,15 @@ const char* OpenVRPlugin::description() const
         "\n"  ;
 
     return text.c_str();
+}
+
+SignalProxy<bool(const controllerState &left, const controllerState &right)> OpenVRPlugin::sigUpdateControllerState()
+{
+    return impl->updateControllerState;
+}
+SignalProxy<void(coordinates &headOrigin)> OpenVRPlugin::sigRequestHeadOrigin()
+{
+    return impl->requestHeadOrigin;
 }
 
 CNOID_IMPLEMENT_PLUGIN_ENTRY(OpenVRPlugin);

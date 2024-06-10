@@ -2,6 +2,7 @@
 #define __CNOID_OPENVR_PLUGIN_H__
 
 #include <cnoid/Plugin>
+#include <cnoid/Signal>
 #include "Coordinates.h"
 #include "exportdecl.h"
 
@@ -37,7 +38,8 @@ public:
     virtual const char* description() const override;
 
     //Signal
-    //void setControllerCallback();
+    SignalProxy<bool(const controllerState &left, const controllerState &right)> sigUpdateControllerState();
+    SignalProxy<void(coordinates &headOrigin)> sigRequestHeadOrigin();
 
     class Impl;
 private:
