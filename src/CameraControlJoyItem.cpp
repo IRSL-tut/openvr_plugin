@@ -1,4 +1,5 @@
 #include "CameraControlJoyItem.h"
+#include "OpenVRPlugin.h"
 
 #include <cnoid/RootItem>
 #include <cnoid/ItemManager>
@@ -137,6 +138,11 @@ void CameraControlJoyItem::Impl::initialize()
     mw->sigKeyReleased().connect( [this](QKeyEvent *ev) {
                                       this->keyRelease(ev);
                                   });
+
+    OpenVRPlugin::instance()->sigRequestHeadOrigin().connect( [this] (coordinates &head_origin) {
+        head_origin = w_T_pos;
+        head_origin.transform(pos_T_head);
+    });
 }
 void CameraControlJoyItem::Impl::initializeCameraPosition()
 {

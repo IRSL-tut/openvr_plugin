@@ -125,6 +125,11 @@ void OpenVRPlugin::Impl::initialize()
 {
     os_ = &(MessageView::instance()->cout(false));
 
+    std::vector<SceneView *> view_instances = SceneView::instances();
+    if (view_instances.size() < 2) {
+        *os_ << "scene less than 3" << std::endl;
+        return;
+    }
 #ifdef _WIN32
     origin.pos << -3.0, 0.0, 0.0;
     {
@@ -141,8 +146,8 @@ void OpenVRPlugin::Impl::initialize()
     }
     m_pHMD->GetRecommendedRenderTargetSize( &nWidth, &nHeight );
     *os_ << "width x height = " << nWidth << " x  " << nHeight << std::endl;
-    vr::HmdMatrix44_t l_mat = m_pHMD->GetProjectionMatrix( vr::Eye_Left,  0.01f, 15.0f );
-    vr::HmdMatrix44_t r_mat = m_pHMD->GetProjectionMatrix( vr::Eye_Right, 0.01f, 15.0f );
+    vr::HmdMatrix44_t l_mat = m_pHMD->GetProjectionMatrix( vr::Eye_Left,  0.01f, 50.0f );// eye, near, far
+    vr::HmdMatrix44_t r_mat = m_pHMD->GetProjectionMatrix( vr::Eye_Right, 0.01f, 50.0f );// eye, near, far
     vr::HmdMatrix34_t l_eye = m_pHMD->GetEyeToHeadTransform( vr::Eye_Left );
     vr::HmdMatrix34_t r_eye = m_pHMD->GetEyeToHeadTransform( vr::Eye_Right );
 #if 1 // DEBUG_PRINT
@@ -193,7 +198,6 @@ void OpenVRPlugin::Impl::initialize()
     offGL.context->doneCurrent();
 
     //// choreonoid settings
-    std::vector<SceneView *> view_instances = SceneView::instances();
     if (view_instances.size() > 2) {
         view_instances.at(1)->sceneWidget()->setScreenSize(nWidth, nHeight);
         view_instances.at(2)->sceneWidget()->setScreenSize(nWidth, nHeight);
@@ -236,7 +240,7 @@ void OpenVRPlugin::Impl::singleLoop()
 
         /// update camera pose
         // set_camera
-        impl->requestHeadOrigin(origin);
+        requestHeadOrigin(origin);
 
         coordinates cds = origin;
         cds.transform(origin_to_HMD);
@@ -321,8 +325,10 @@ void OpenVRPlugin::Impl::updatePoses()
     for ( int idx = 0; idx < vr::k_unMaxTrackedDeviceCount; idx++ ) {
         int cls = m_pHMD->GetTrackedDeviceClass(idx);
         if ( TrackedDevicePoses[idx].bPoseIsValid ) {
+#if 0
             *os_ << "t: " << idx << " / " << cls << " ";
             *os_ << TrackedDevicePoses[idx].bDeviceIsConnected << " " << TrackedDevicePoses[idx].eTrackingResult << std::endl;
+#endif
             validPoseCount++;
             deviceClasses[idx] = cls;
             const vr::HmdMatrix34_t &mat = TrackedDevicePoses[idx].mDeviceToAbsoluteTracking;
@@ -409,7 +415,7 @@ void OpenVRPlugin::Impl::updatePoses()
         }
     }
 
-    impl->updateControllerState(state_L, state_R);
+    updateControllerState(state_L, state_R);
 
     vr::VREvent_t event;
     while( m_pHMD->PollNextEvent( &event, sizeof( event ) ) ) {
