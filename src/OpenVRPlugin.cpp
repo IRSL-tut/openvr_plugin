@@ -59,7 +59,7 @@ void setStateToStruct(const vr::VRControllerState_t &state,
 class OpenVRPlugin::Impl
 {
 public:
-    Impl();
+    Impl(OpenVRPlugin *_self);
     void initialize();
 #ifdef _WIN32
     void singleLoop();
@@ -103,14 +103,15 @@ public:
     QElapsedTimer qtimer;
 #endif // _WIN32
     //
+    OpenVRPlugin *self;
     std::ostream *os_;
 
-    Signal<bool(const controllerState &left, const controllerState &right)> updateControllerState;;
+    Signal<void(const controllerState &left, const controllerState &right)> updateControllerState;;
     Signal<void(coordinates &headOrigin)> requestHeadOrigin;
 };
 
 //// >>>> Impl
-OpenVRPlugin::Impl::Impl()
+OpenVRPlugin::Impl::Impl(OpenVRPlugin *_self) : self(_self)
 {
 #ifdef _WIN32
     m_pHMD = nullptr;
@@ -220,6 +221,17 @@ void OpenVRPlugin::Impl::initialize()
 
     tm.start(interval_ms);
 #endif // _WIN32
+#if 1
+    self->sigUpdateControllerState().connect( [this] (const controllerState &left, const controllerState &right) {
+        *os_ << "br: ";
+        *os_ << right.buttons[0];
+        *os_ << right.buttons[1];
+        *os_ << right.buttons[2];
+        *os_ << right.buttons[3];
+        *os_ << right.buttons[4];
+        *os_ << std::endl;
+    });
+#endif
 }
 
 #ifdef _WIN32
@@ -448,7 +460,7 @@ OpenVRPlugin::OpenVRPlugin()
     : Plugin("OpenVR")
 {
     instance_ = this;
-    impl = new Impl();
+    impl = new Impl(this);
 }
 OpenVRPlugin::~OpenVRPlugin()
 {
@@ -486,7 +498,7 @@ const char* OpenVRPlugin::description() const
     return text.c_str();
 }
 
-SignalProxy<bool(const controllerState &left, const controllerState &right)> OpenVRPlugin::sigUpdateControllerState()
+SignalProxy<void(const controllerState &left, const controllerState &right)> OpenVRPlugin::sigUpdateControllerState()
 {
     return impl->updateControllerState;
 }

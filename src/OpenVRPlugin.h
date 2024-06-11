@@ -38,7 +38,7 @@ public:
     virtual const char* description() const override;
 
     //Signal
-    SignalProxy<bool(const controllerState &left, const controllerState &right)> sigUpdateControllerState();
+    SignalProxy<void(const controllerState &left, const controllerState &right)> sigUpdateControllerState();
     SignalProxy<void(coordinates &headOrigin)> sigRequestHeadOrigin();
 
     class Impl;
