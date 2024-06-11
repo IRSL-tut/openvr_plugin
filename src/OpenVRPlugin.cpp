@@ -13,7 +13,6 @@
 #include "OpenVRPlugin.h"
 #include "CameraControlJoyItem.h"
 
-// #include "OffscreenGL.h"
 #ifdef _WIN32
 #include <openvr.h>
 #endif // _WIN32
@@ -75,8 +74,6 @@ public:
     controllerState state_L, state_R;
 #ifdef _WIN32
     vr::IVRSystem *m_pHMD;
-
-    //OffscreenGL offGL;
 
     unsigned int nWidth, nHeight;
     unsigned int ui_L_TextureId;
@@ -173,32 +170,10 @@ void OpenVRPlugin::Impl::initialize()
                     r_mat.m[3][0], r_mat.m[3][1], r_mat.m[3][2], r_mat.m[3][3];
     setToCoords(l_eye, eyeToHead_L);
     setToCoords(r_eye, eyeToHead_R);
-#if 0
-    {
-        bool glres = offGL.create();
-        *os_ << "offGL: create: " << glres << std::endl;
-        glres = offGL.makeCurrent();
-        *os_ << "offGL: current: " << glres << std::endl;
-        glres = offGL.makeBuffer(nWidth, nHeight, &ui_R_TextureId, &ui_R_FramebufferId);
-        *os_ << "offGL: buffer: " << glres << std::endl;
-        glres = offGL.makeBuffer(nWidth, nHeight, &ui_L_TextureId, &ui_L_FramebufferId);
-        *os_ << "offGL: buffer: " << glres << std::endl;
-        offGL.glFinish();
-        offGL.glFlush();
-        offGL.context->doneCurrent();
-        OffscreenGL::printSurfaceFormat(offGL.context->format(), *os_);
-    }
-    offGL.makeCurrent();
-#endif
     if ( !vr::VRCompositor() ) {
         *os_ << "Compositor initialization failed. See log file for details" << std::endl;
         return;
     }
-#if 0
-    offGL.glFinish();
-    offGL.glFlush();
-    offGL.context->doneCurrent();
-#endif
     //// choreonoid settings
     if (view_instances.size() > 2) {
         view_instances.at(1)->sceneWidget()->setScreenSize(nWidth, nHeight);
@@ -256,6 +231,8 @@ void OpenVRPlugin::Impl::singleLoop()
             return;
         }
 
+        SceneWidget *sw_L = view_instances.at(1)->sceneWidget();
+        SceneWidget *sw_R = view_instances.at(2)->sceneWidget();
         /// update camera pose
         // set_camera
         requestHeadOrigin(origin);
@@ -269,7 +246,8 @@ void OpenVRPlugin::Impl::singleLoop()
         {
             Isometry3 cur;
             cds_l.toPosition(cur);
-            view_instances.at(1)->sceneWidget()->builtinCameraTransform()->setPosition(cur);
+            sw_L->builtinCameraTransform()->setPosition(cur);
+            sw_L->builtinCameraTransform()->notifyUpdate(SgUpdate::Modified);
         }
         // right camera
         coordinates cds_r = cds;
@@ -277,57 +255,52 @@ void OpenVRPlugin::Impl::singleLoop()
         {
             Isometry3 cur;
             cds_r.toPosition(cur);
-            view_instances.at(2)->sceneWidget()->builtinCameraTransform()->setPosition(cur);
+            sw_R->builtinCameraTransform()->setPosition(cur);
+            sw_R->builtinCameraTransform()->notifyUpdate(SgUpdate::Modified);
         }
-        view_instances.at(1)->sceneWidget()->renderScene(true);//
-        view_instances.at(2)->sceneWidget()->renderScene(true);//
-#if 0
-        QImage tmp_im_l = view_instances.at(1)->sceneWidget()->getImage();
-        QImage tmp_im_r = view_instances.at(2)->sceneWidget()->getImage();
-
-        offGL.makeCurrent();
-        QImage im_l = tmp_im_l.convertToFormat(QImage::Format_RGB888).mirrored(false, true);
-        QImage im_r = tmp_im_r.convertToFormat(QImage::Format_RGB888).mirrored(false, true);
-        //QImage im_r.convertTo(QImage::Format_RGB888);
-        //QImage im_l.convertTo(QImage::Format_RGB888);
-        ////
-        //*os_ << "up: " << im_r.width() << " x " << im_r.height() << " / " << im_r.bytesPerLine() << std::endl;
-        ////
-        offGL.writeTexture(ui_R_TextureId, im_r.bits(), nWidth, nHeight, 0, 0);
-        offGL.writeTexture(ui_L_TextureId, im_l.bits(), nWidth, nHeight, 0, 0);
-#endif
+        //// render to textures
+        sw_L->renderScene(true);//
+        sw_R->renderScene(true);//
+        GLSLSceneRenderer *sl_L = static_cast<GLSLSceneRenderer *>(sw_L->renderer<GLSceneRenderer>());
+        GLSLSceneRenderer *sl_R = static_cast<GLSLSceneRenderer *>(sw_R->renderer<GLSceneRenderer>());
+        if (sl_L->defaultFBO() == 0) {
+            QImage tmp = sw_L->getImage();
+        } else {
+            sw_L->makeCurrent();
+            sw_L->paintGL();//
+            sw_L->doneCurrent();
+        }
+        if (sl_R->defaultFBO() == 0) {
+            QImage tmp = sw_R->getImage();
+        } else {
+            sw_R->makeCurrent();
+            sw_R->paintGL();//
+            sw_R->doneCurrent();
+        }
+        //// submit textures
         {
-            unsigned int fbo = view_instances.at(1)->sceneWidget()->getFramebufferObject();
-            f->glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-            //
-            GLint buffer, params;
-            f->glGetIntegerv(GL_FRAMEBUFFER_BINDING, &buffer);
-            f->glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &params);
-            *os_ << "fb: " << buffer << ", tex = " << params << std::endl;
-            f->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            ui_L_TextureId = params;
+            sw_L->makeCurrent();
+            ui_L_TextureId = sl_L->getTextureId();
+            *os_ << "L tx: " << ui_L_TextureId << std::endl;
             vr::Texture_t leftEyeTexture =  {(void*)(uintptr_t)ui_L_TextureId, vr::TextureType_OpenGL, vr::ColorSpace_Gamma };
             auto resL = vr::VRCompositor()->Submit(vr::Eye_Left,  &leftEyeTexture );
             if (resL != 0) {
                 *os_ << "L: " << resL << std::endl;
             }
+            sw_L->doneCurrent();
         }
         {
-            unsigned int fbo = view_instances.at(2)->sceneWidget()->getFramebufferObject();
-            f->glBindFramebuffer(GL_FRAMEBUFFER, fbo);
-            //
-            GLint buffer, params;
-            f->glGetIntegerv(GL_FRAMEBUFFER_BINDING, &buffer);
-            f->glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_FRAMEBUFFER_ATTACHMENT_OBJECT_NAME, &params);
-            *os_ << "fb: " << buffer << ", tex = " << params << std::endl;
-            f->glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            ui_R_TextureId = params;
-            vr::Texture_t rightEyeTexture = {(void*)(uintptr_t)ui_R_TextureId, vr::TextureType_OpenGL, vr::ColorSpace_Gamma };
-            auto resR = vr::VRCompositor()->Submit(vr::Eye_Right, &rightEyeTexture );
+            sw_R->makeCurrent();
+            ui_R_TextureId = sl_R->getTextureId();
+            *os_ << "R tx: " << ui_R_TextureId << std::endl;
+            vr::Texture_t rightEyeTexture =  {(void*)(uintptr_t)ui_R_TextureId, vr::TextureType_OpenGL, vr::ColorSpace_Gamma };
+            auto resR = vr::VRCompositor()->Submit(vr::Eye_Right,  &rightEyeTexture );
             if (resR != 0) {
                 *os_ << "R: " << resR << std::endl;
             }
+            sw_R->doneCurrent();
         }
+        ////
         updatePoses();
         //vr::Compositor_FrameTiming tmg;
         //bool tm_q = vr::VRCompositor()->GetFrameTiming(&tmg);
