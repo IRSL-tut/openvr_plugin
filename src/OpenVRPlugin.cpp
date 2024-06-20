@@ -425,9 +425,13 @@ void OpenVRPlugin::Impl::updatePoses()
             }
             // update controller pose
             if (idx == 1) {
-                state_L.coords = devicePoses[idx];
+                state_L.coords = origin;
+                state_L.coords.transform(origin_to_HMD);
+                state_L.coords.transform(devicePoses[idx]);
             } else if (idx == 2) {
-                state_R.coords = devicePoses[idx];
+                state_R.coords = origin;
+                state_R.coords.transform(origin_to_HMD);
+                state_R.coords.transform(devicePoses[idx]);
             } else {
                 /// more then 3 controller?
                 continue;
