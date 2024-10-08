@@ -76,6 +76,8 @@ public:
     controllerState state_L, state_R;
 #ifdef _WIN32
     vr::IVRSystem *m_pHMD;
+    vr::TrackedDevicePose_t TrackedDevicePoses[ vr::k_unMaxTrackedDeviceCount ];
+#endif // _WIN32
 
     unsigned int nWidth, nHeight;
     unsigned int ui_L_TextureId;
@@ -83,7 +85,6 @@ public:
     unsigned int ui_R_TextureId;
     unsigned int ui_R_FramebufferId;
 
-    vr::TrackedDevicePose_t TrackedDevicePoses[ vr::k_unMaxTrackedDeviceCount ];
     // Eigen // devicePoses
     std::vector<Isometry3d> devicePoses;
     std::vector<std::string> deviceNames;
@@ -99,7 +100,6 @@ public:
     coordinates HMD_coords;
     coordinates origin_to_HMD;
     coordinates origin;
-#endif // _WIN32
     //
     Timer tm;
     QElapsedTimer qtimer;
@@ -196,6 +196,8 @@ void OpenVRPlugin::Impl::initialize()
         }
     }
 #else
+    nWidth = 2000;
+    nHeight = 2000;
     if (view_instances.size() > 2) {
         view_instances.at(1)->sceneWidget()->setScreenSize(2000, 2000);
         view_instances.at(2)->sceneWidget()->setScreenSize(2000, 2000);
