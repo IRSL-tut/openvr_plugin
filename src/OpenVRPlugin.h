@@ -37,6 +37,9 @@ public:
     virtual bool finalize() override;
     virtual const char* description() const override;
 
+    void setProjectionMatrix(double scale);
+    void setEyeDifferenceScale(double scale);
+
     //Signal
     SignalProxy<void(const controllerState &left, const controllerState &right)> sigUpdateControllerState();
     SignalProxy<void(coordinates &headOrigin)> sigRequestHeadOrigin();
