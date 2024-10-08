@@ -201,6 +201,16 @@ void OpenVRPlugin::Impl::initialize()
     if (view_instances.size() > 2) {
         view_instances.at(1)->sceneWidget()->setScreenSize(2000, 2000);
         view_instances.at(2)->sceneWidget()->setScreenSize(2000, 2000);
+        {
+            GLSceneRenderer *glsr = view_instances.at(1)->sceneWidget()->renderer<GLSceneRenderer>();
+            GLSLSceneRenderer *sl = static_cast<GLSLSceneRenderer *>(glsr);
+            projection_L = sl->projectionMatrix();
+        }
+        {
+            GLSceneRenderer *glsr = view_instances.at(2)->sceneWidget()->renderer<GLSceneRenderer>();
+            GLSLSceneRenderer *sl = static_cast<GLSLSceneRenderer *>(glsr);
+            projection_R = sl->projectionMatrix();
+        }
     }
 #endif // _WIN32
     tm.sigTimeout().connect( [this]() { this->singleLoop(); });
@@ -337,6 +347,38 @@ void OpenVRPlugin::Impl::singleLoop()
 
 #endif
 }
+
+void OpenVRPlugin::Impl::setProjectionMatrix(double scale)
+{
+    Matrix4 scaleMatrix = Matrix4::Identity();
+    scaleMatrix(0, 0) = scale;
+    scaleMatrix(1, 1) = scale;
+    scaleMatrix(2, 2) = scale;
+    std::vector<SceneView *> view_instances = SceneView::instances();
+    if (view_instances.size() > 2) {
+        view_instances.at(1)->sceneWidget()->setScreenSize(nWidth, nHeight);
+        view_instances.at(2)->sceneWidget()->setScreenSize(nWidth, nHeight);
+        {
+            GLSceneRenderer *glsr = view_instances.at(1)->sceneWidget()->renderer<GLSceneRenderer>();
+            GLSLSceneRenderer *sl = static_cast<GLSLSceneRenderer *>(glsr);
+            Matrix4 tmp = projection_L * scaleMatrix;
+            sl->setUserProjectionMatrix(tmp);
+        }
+        {
+            GLSceneRenderer *glsr = view_instances.at(2)->sceneWidget()->renderer<GLSceneRenderer>();
+            GLSLSceneRenderer *sl = static_cast<GLSLSceneRenderer *>(glsr);
+            Matrix4 tmp = projection_R * scaleMatrix;
+            sl->setUserProjectionMatrix(tmp);
+        }
+    }
+}
+
+void OpenVRPlugin::Impl::setEyeDifferenceScale(double scale)
+{
+    eyeToHead_L.pos = scale * eyeToHead_L_org.pos;
+    eyeToHead_R.pos = scale * eyeToHead_R_org.pos;
+}
+
 #ifdef _WIN32
 bool OpenVRPlugin::Impl::getDeviceString(std::string &_res, int index, vr::TrackedDeviceProperty prop)
 {
@@ -354,35 +396,6 @@ bool OpenVRPlugin::Impl::getDeviceString(std::string &_res, int index, vr::Track
     _res = buf_;
     delete [] buf_;
     return true;
-}
-
-void OpenVRPlugin::Impl::setProjectionMatrix(double scale)
-{
-    Matrix4 scaleMatrix = Matrix4::Identity();
-    scaleMatrix(0, 0) = scale;
-    scaleMatrix(1, 1) = scale;
-    scaleMatrix(2, 2) = scale;
-    std::vector<SceneView *> view_instances = SceneView::instances();
-    if (view_instances.size() > 2) {
-        view_instances.at(1)->sceneWidget()->setScreenSize(nWidth, nHeight);
-        view_instances.at(2)->sceneWidget()->setScreenSize(nWidth, nHeight);
-        {
-            GLSceneRenderer *glsr = view_instances.at(1)->sceneWidget()->renderer<GLSceneRenderer>();
-            GLSLSceneRenderer *sl = static_cast<GLSLSceneRenderer *>(glsr);
-            sl->setUserProjectionMatrix(scaleMatrix * projection_L);
-        }
-        {
-            GLSceneRenderer *glsr = view_instances.at(2)->sceneWidget()->renderer<GLSceneRenderer>();
-            GLSLSceneRenderer *sl = static_cast<GLSLSceneRenderer *>(glsr);
-            sl->setUserProjectionMatrix(scaleMatrix * projection_R);
-        }
-    }
-}
-
-void OpenVRPlugin::Impl::setEyeDifferenceScale(double scale)
-{
-    eyeToHead_L.pos = scale * eyeToHead_L_org.pos;
-    eyeToHead_R.pos = scale * eyeToHead_R_org.pos;
 }
 
 void OpenVRPlugin::Impl::updatePoses()
