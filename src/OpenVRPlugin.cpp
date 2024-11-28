@@ -63,6 +63,9 @@ public:
     void singleLoop();
     void setProjectionMatrix(double scale);
     void setEyeDifferenceScale(double scale);
+    void setCameraOrigin(double l_joy_x,double l_joy_y,double r_joy_x,double r_joy_y);
+    void causeVive(unsigned int sec);
+    void Vivemotion(vr::IVRSystem *m_pHMD);
 #ifdef _WIN32
     void updatePoses();
     bool getDeviceString(std::string &_res, int index, vr::TrackedDeviceProperty prop);
@@ -72,6 +75,8 @@ public:
 public:
     unsigned long counter;
     double publishingRate;
+    bool sw_vive = 0;
+    unsigned int sec_count = 0;
 
     controllerState state_L, state_R;
 #ifdef _WIN32
@@ -148,8 +153,8 @@ void OpenVRPlugin::Impl::initialize()
     }
     m_pHMD->GetRecommendedRenderTargetSize( &nWidth, &nHeight );
     *os_ << "width x height = " << nWidth << " x  " << nHeight << std::endl;
-    vr::HmdMatrix44_t l_mat = m_pHMD->GetProjectionMatrix( vr::Eye_Left,  0.01f, 50.0f );// eye, near, far
-    vr::HmdMatrix44_t r_mat = m_pHMD->GetProjectionMatrix( vr::Eye_Right, 0.01f, 50.0f );// eye, near, far
+    vr::HmdMatrix44_t l_mat = m_pHMD->GetProjectionMatrix( vr::Eye_Left,  0.001f, 500.0f );// eye, near, far
+    vr::HmdMatrix44_t r_mat = m_pHMD->GetProjectionMatrix( vr::Eye_Right, 0.001f, 500.0f );// eye, near, far
     vr::HmdMatrix34_t l_eye = m_pHMD->GetEyeToHeadTransform( vr::Eye_Left );
     vr::HmdMatrix34_t r_eye = m_pHMD->GetEyeToHeadTransform( vr::Eye_Right );
 #if 1 // DEBUG_PRINT
@@ -220,14 +225,15 @@ void OpenVRPlugin::Impl::initialize()
 
     tm.start(interval_ms);
 
-#if 1
+#if 0
     self->sigUpdateControllerState().connect( [this] (const controllerState &left, const controllerState &right) {
-        *os_ << "br: ";
-        *os_ << right.buttons[0];
-        *os_ << right.buttons[1];
-        *os_ << right.buttons[2];
-        *os_ << right.buttons[3];
-        *os_ << right.buttons[4];
+        *os_ << "button right: ";
+        *os_ << right.axes[0];
+        // *os_ << right.buttons[0];
+        // *os_ << right.buttons[1];
+        // *os_ << right.buttons[2];
+        // *os_ << right.buttons[3];
+        // *os_ << right.buttons[4];
         *os_ << std::endl;
     });
 #endif
@@ -299,7 +305,7 @@ void OpenVRPlugin::Impl::singleLoop()
         {
             sw_L->makeCurrent();
             ui_L_TextureId = sl_L->getTextureId();
-            *os_ << "L tx: " << ui_L_TextureId << std::endl;
+            //*os_ << "L tx: " << ui_L_TextureId << std::endl;
             vr::Texture_t leftEyeTexture =  {(void*)(uintptr_t)ui_L_TextureId, vr::TextureType_OpenGL, vr::ColorSpace_Gamma };
             auto resL = vr::VRCompositor()->Submit(vr::Eye_Left,  &leftEyeTexture );
             if (resL != 0) {
@@ -310,7 +316,7 @@ void OpenVRPlugin::Impl::singleLoop()
         {
             sw_R->makeCurrent();
             ui_R_TextureId = sl_R->getTextureId();
-            *os_ << "R tx: " << ui_R_TextureId << std::endl;
+            //*os_ << "R tx: " << ui_R_TextureId << std::endl;
             vr::Texture_t rightEyeTexture =  {(void*)(uintptr_t)ui_R_TextureId, vr::TextureType_OpenGL, vr::ColorSpace_Gamma };
             auto resR = vr::VRCompositor()->Submit(vr::Eye_Right,  &rightEyeTexture );
             if (resR != 0) {
@@ -319,6 +325,7 @@ void OpenVRPlugin::Impl::singleLoop()
             sw_R->doneCurrent();
         }
         ////
+        Vivemotion(m_pHMD);
         updatePoses();
         //vr::Compositor_FrameTiming tmg;
         //bool tm_q = vr::VRCompositor()->GetFrameTiming(&tmg);
@@ -336,6 +343,7 @@ void OpenVRPlugin::Impl::singleLoop()
     }
     view_instances.at(1)->sceneWidget()->renderScene(true);//
     view_instances.at(2)->sceneWidget()->renderScene(true);//
+
 #if 0
     QImage tmp_im_l = view_instances.at(1)->sceneWidget()->getImage();
     QImage tmp_im_r = view_instances.at(2)->sceneWidget()->getImage();
@@ -378,7 +386,26 @@ void OpenVRPlugin::Impl::setEyeDifferenceScale(double scale)
     eyeToHead_L.pos = scale * eyeToHead_L_org.pos;
     eyeToHead_R.pos = scale * eyeToHead_R_org.pos;
 }
-
+///追加関数///
+void OpenVRPlugin::Impl::setCameraOrigin(double l_joy_x,double l_joy_y,double r_joy_x,double r_joy_y)
+{   
+    double scale = 0.01;
+    origin.pos[0] = origin.pos[0]+scale*l_joy_y;
+    origin.pos[1] = origin.pos[1]-scale*l_joy_x;
+    origin.pos[2] = origin.pos[2]+scale*r_joy_y;
+}
+void OpenVRPlugin::Impl::causeVive(unsigned int sec){
+    sw_vive = 1;
+    sec_count = sec;
+}
+void OpenVRPlugin::Impl::Vivemotion(vr::IVRSystem *m_pHMD){
+    if(sw_vive){
+        m_pHMD->TriggerHapticPulse(1, 1, sec_count);
+        m_pHMD->TriggerHapticPulse(2, 1, sec_count);
+        sw_vive=0;
+    }
+}
+///////////////////////
 #ifdef _WIN32
 bool OpenVRPlugin::Impl::getDeviceString(std::string &_res, int index, vr::TrackedDeviceProperty prop)
 {
@@ -474,11 +501,11 @@ void OpenVRPlugin::Impl::updatePoses()
                 continue;
             }
             // update controller pose
-            if (idx == 1) {
+            if (idx == 2) {
                 state_L.coords = origin;
                 state_L.coords.transform(origin_to_HMD);
                 state_L.coords.transform(devicePoses[idx]);
-            } else if (idx == 2) {
+            } else if (idx == 1) {
                 state_R.coords = origin;
                 state_R.coords.transform(origin_to_HMD);
                 state_R.coords.transform(devicePoses[idx]);
@@ -489,9 +516,9 @@ void OpenVRPlugin::Impl::updatePoses()
             // update controller state(button etc.)
             vr::VRControllerState_t state;
             m_pHMD->GetControllerState(idx, &state, sizeof(vr::VRControllerState_t));
-            if (idx == 1) {
+            if (idx == 2) {
                 setStateToStruct(state, state_L);
-            } else if (idx == 2) {
+            } else if (idx == 1) {
                 setStateToStruct(state, state_R);
             } else {
                 /// more then 3 controller?
@@ -508,9 +535,11 @@ void OpenVRPlugin::Impl::updatePoses()
     }
 
     updateControllerState(state_L, state_R);
-
+//pulse
+    
+//
     vr::VREvent_t event;
-    while( m_pHMD->PollNextEvent( &event, sizeof( event ) ) ) {
+    while(m_pHMD->PollNextEvent( &event, sizeof( event ) ) ) {
         switch( event.eventType ) {
         case vr::VREvent_TrackedDeviceDeactivated:
             break;
@@ -586,6 +615,17 @@ void OpenVRPlugin::setProjectionMatrix(double scale)
 void OpenVRPlugin::setEyeDifferenceScale(double scale)
 {
     impl->setEyeDifferenceScale(scale);
+}
+
+void OpenVRPlugin::setCameraOrigin(double l_joy_x,double l_joy_y,double r_joy_x,double r_joy_y)
+{
+    impl->setCameraOrigin(l_joy_x,l_joy_y,r_joy_x,r_joy_y);
+}
+
+
+void cnoid::OpenVRPlugin::causeVive(unsigned int sec)
+{
+    impl->causeVive(sec);
 }
 
 SignalProxy<void(const controllerState &left, const controllerState &right)> OpenVRPlugin::sigUpdateControllerState()

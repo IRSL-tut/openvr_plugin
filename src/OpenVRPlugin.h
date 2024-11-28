@@ -39,6 +39,8 @@ public:
 
     void setProjectionMatrix(double scale);
     void setEyeDifferenceScale(double scale);
+    void setCameraOrigin(double l_joy_x,double l_joy_y,double r_joy_x,double r_joy_y);
+    void causeVive(unsigned int sec);
 
     //Signal
     SignalProxy<void(const controllerState &left, const controllerState &right)> sigUpdateControllerState();
