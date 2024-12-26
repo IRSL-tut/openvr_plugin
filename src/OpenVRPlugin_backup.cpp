@@ -19,10 +19,6 @@
 
 #include <QElapsedTimer>
 
-//add
-#include <GL/gl.h>        // OpenGL の基本機能
-#include <GL/glu.h>       // 一部のユーティリティ関数
-
 using namespace cnoid;
 
 namespace {
@@ -65,16 +61,6 @@ public:
     Impl(OpenVRPlugin *_self);
     void initialize();
     void singleLoop();
-    void setProjectionMatrix(double scale);
-    void setEyeDifferenceScale(double scale);
-    void setCameraOrigin(double l_joy_x,double l_joy_y,double r_joy_x,double r_joy_y);
-    void rotateCamera(double joystickValue,double rotationscale);
-    coordinates CameraOrigin();
-    void causeVive(unsigned int sec);
-    void Vivemotion(vr::IVRSystem *m_pHMD);
-    //add
-    void loadOverlayTexture(const std::string& imagePath);
-    void drawOverlayTexture();
 #ifdef _WIN32
     void updatePoses();
     bool getDeviceString(std::string &_res, int index, vr::TrackedDeviceProperty prop);
@@ -84,16 +70,10 @@ public:
 public:
     unsigned long counter;
     double publishingRate;
-    bool sw_vive = 0;
-    unsigned int sec_count = 0;
-
-    unsigned int overlayTextureId;
 
     controllerState state_L, state_R;
 #ifdef _WIN32
     vr::IVRSystem *m_pHMD;
-    vr::TrackedDevicePose_t TrackedDevicePoses[ vr::k_unMaxTrackedDeviceCount ];
-#endif // _WIN32
 
     unsigned int nWidth, nHeight;
     unsigned int ui_L_TextureId;
@@ -101,6 +81,7 @@ public:
     unsigned int ui_R_TextureId;
     unsigned int ui_R_FramebufferId;
 
+    vr::TrackedDevicePose_t TrackedDevicePoses[ vr::k_unMaxTrackedDeviceCount ];
     // Eigen // devicePoses
     std::vector<Isometry3d> devicePoses;
     std::vector<std::string> deviceNames;
@@ -109,14 +90,12 @@ public:
     Matrix4 projection_L;
     Matrix4 projection_R;
 
-    coordinates eyeToHead_L_org;
-    coordinates eyeToHead_R_org;
     coordinates eyeToHead_L;
     coordinates eyeToHead_R;
     coordinates HMD_coords;
     coordinates origin_to_HMD;
     coordinates origin;
-    coordinatesPtr originptr;
+#endif // _WIN32
     //
     Timer tm;
     QElapsedTimer qtimer;
@@ -150,14 +129,7 @@ void OpenVRPlugin::Impl::initialize()
         return;
     }
 #ifdef _WIN32
-    //origin.pos << -3.2, 0.0, 0.0;
-    origin.pos << 0.0, 0.0, 0.0;
-    Matrix3d rotation;
-    rotation << 1,  0,  0,  // X軸方向（右方向が-Y軸方向に回転）
-                0,  1,  0,  // Y軸方向（上方向が+X軸方向に回転）
-                0,  0,  1;  // Z軸方向（前方向はそのまま）
-    origin.rot = rotation;
-    
+    origin.pos << -3.0, 0.0, 0.0;
     {
         Quaternion q(0.5, 0.5, -0.5, -0.5);
         origin_to_HMD.set(q);
@@ -172,8 +144,8 @@ void OpenVRPlugin::Impl::initialize()
     }
     m_pHMD->GetRecommendedRenderTargetSize( &nWidth, &nHeight );
     *os_ << "width x height = " << nWidth << " x  " << nHeight << std::endl;
-    vr::HmdMatrix44_t l_mat = m_pHMD->GetProjectionMatrix( vr::Eye_Left,  0.001f, 500.0f );// eye, near, far
-    vr::HmdMatrix44_t r_mat = m_pHMD->GetProjectionMatrix( vr::Eye_Right, 0.001f, 500.0f );// eye, near, far
+    vr::HmdMatrix44_t l_mat = m_pHMD->GetProjectionMatrix( vr::Eye_Left,  0.01f, 50.0f );// eye, near, far
+    vr::HmdMatrix44_t r_mat = m_pHMD->GetProjectionMatrix( vr::Eye_Right, 0.01f, 50.0f );// eye, near, far
     vr::HmdMatrix34_t l_eye = m_pHMD->GetEyeToHeadTransform( vr::Eye_Left );
     vr::HmdMatrix34_t r_eye = m_pHMD->GetEyeToHeadTransform( vr::Eye_Right );
 #if 1 // DEBUG_PRINT
@@ -196,16 +168,12 @@ void OpenVRPlugin::Impl::initialize()
                     r_mat.m[1][0], r_mat.m[1][1], r_mat.m[1][2], r_mat.m[1][3],
                     r_mat.m[2][0], r_mat.m[2][1], r_mat.m[2][2], r_mat.m[2][3],
                     r_mat.m[3][0], r_mat.m[3][1], r_mat.m[3][2], r_mat.m[3][3];
-    setToCoords(l_eye, eyeToHead_L_org);
-    setToCoords(r_eye, eyeToHead_R_org);
-    eyeToHead_L = eyeToHead_L_org;
-    eyeToHead_R = eyeToHead_R_org;
+    setToCoords(l_eye, eyeToHead_L);
+    setToCoords(r_eye, eyeToHead_R);
     if ( !vr::VRCompositor() ) {
         *os_ << "Compositor initialization failed. See log file for details" << std::endl;
         return;
     }
-    //add
-    loadOverlayTexture("C:/Users/irsl/Pictures/Screenshots/スクリーンショット 2024-09-30 174331.png");
     //// choreonoid settings
     if (view_instances.size() > 2) {
         view_instances.at(1)->sceneWidget()->setScreenSize(nWidth, nHeight);
@@ -222,21 +190,9 @@ void OpenVRPlugin::Impl::initialize()
         }
     }
 #else
-    nWidth = 2000;
-    nHeight = 2000;
     if (view_instances.size() > 2) {
         view_instances.at(1)->sceneWidget()->setScreenSize(2000, 2000);
         view_instances.at(2)->sceneWidget()->setScreenSize(2000, 2000);
-        {
-            GLSceneRenderer *glsr = view_instances.at(1)->sceneWidget()->renderer<GLSceneRenderer>();
-            GLSLSceneRenderer *sl = static_cast<GLSLSceneRenderer *>(glsr);
-            projection_L = sl->projectionMatrix();
-        }
-        {
-            GLSceneRenderer *glsr = view_instances.at(2)->sceneWidget()->renderer<GLSceneRenderer>();
-            GLSLSceneRenderer *sl = static_cast<GLSLSceneRenderer *>(glsr);
-            projection_R = sl->projectionMatrix();
-        }
     }
 #endif // _WIN32
     tm.sigTimeout().connect( [this]() { this->singleLoop(); });
@@ -246,15 +202,14 @@ void OpenVRPlugin::Impl::initialize()
 
     tm.start(interval_ms);
 
-#if 0
+#if 1
     self->sigUpdateControllerState().connect( [this] (const controllerState &left, const controllerState &right) {
-        *os_ << "button right: ";
-        *os_ << right.axes[0];
-        // *os_ << right.buttons[0];
-        // *os_ << right.buttons[1];
-        // *os_ << right.buttons[2];
-        // *os_ << right.buttons[3];
-        // *os_ << right.buttons[4];
+        *os_ << "btr: ";
+        *os_ << right.buttons[0];
+        *os_ << right.buttons[1];
+        *os_ << right.buttons[2];
+        *os_ << right.buttons[3];
+        *os_ << right.buttons[4];
         *os_ << std::endl;
     });
 #endif
@@ -270,8 +225,6 @@ void OpenVRPlugin::Impl::singleLoop()
         }
         counter++;
 
-        
-        
         std::vector<SceneView *> view_instances = SceneView::instances();
         if (view_instances.size() < 2) {
             *os_ << "scene less than 3" << std::endl;
@@ -324,13 +277,11 @@ void OpenVRPlugin::Impl::singleLoop()
             sw_R->paintGL();//
             sw_R->doneCurrent();
         }
-        // オーバーレイ描画
-        drawOverlayTexture();
         //// submit textures
         {
             sw_L->makeCurrent();
             ui_L_TextureId = sl_L->getTextureId();
-            //*os_ << "L tx: " << ui_L_TextureId << std::endl;
+            *os_ << "L tx: " << ui_L_TextureId << std::endl;
             vr::Texture_t leftEyeTexture =  {(void*)(uintptr_t)ui_L_TextureId, vr::TextureType_OpenGL, vr::ColorSpace_Gamma };
             auto resL = vr::VRCompositor()->Submit(vr::Eye_Left,  &leftEyeTexture );
             if (resL != 0) {
@@ -341,7 +292,7 @@ void OpenVRPlugin::Impl::singleLoop()
         {
             sw_R->makeCurrent();
             ui_R_TextureId = sl_R->getTextureId();
-            //*os_ << "R tx: " << ui_R_TextureId << std::endl;
+            *os_ << "R tx: " << ui_R_TextureId << std::endl;
             vr::Texture_t rightEyeTexture =  {(void*)(uintptr_t)ui_R_TextureId, vr::TextureType_OpenGL, vr::ColorSpace_Gamma };
             auto resR = vr::VRCompositor()->Submit(vr::Eye_Right,  &rightEyeTexture );
             if (resR != 0) {
@@ -349,10 +300,7 @@ void OpenVRPlugin::Impl::singleLoop()
             }
             sw_R->doneCurrent();
         }
-        ////add
-        
-
-        Vivemotion(m_pHMD);
+        ////
         updatePoses();
         //vr::Compositor_FrameTiming tmg;
         //bool tm_q = vr::VRCompositor()->GetFrameTiming(&tmg);
@@ -370,7 +318,6 @@ void OpenVRPlugin::Impl::singleLoop()
     }
     view_instances.at(1)->sceneWidget()->renderScene(true);//
     view_instances.at(2)->sceneWidget()->renderScene(true);//
-
 #if 0
     QImage tmp_im_l = view_instances.at(1)->sceneWidget()->getImage();
     QImage tmp_im_r = view_instances.at(2)->sceneWidget()->getImage();
@@ -382,70 +329,6 @@ void OpenVRPlugin::Impl::singleLoop()
 
 #endif
 }
-
-void OpenVRPlugin::Impl::setProjectionMatrix(double scale)
-{
-    Matrix4 scaleMatrix = Matrix4::Identity();
-    scaleMatrix(0, 0) = scale;
-    scaleMatrix(1, 1) = scale;
-    scaleMatrix(2, 2) = scale;
-    std::vector<SceneView *> view_instances = SceneView::instances();
-    if (view_instances.size() > 2) {
-        view_instances.at(1)->sceneWidget()->setScreenSize(nWidth, nHeight);
-        view_instances.at(2)->sceneWidget()->setScreenSize(nWidth, nHeight);
-        {
-            GLSceneRenderer *glsr = view_instances.at(1)->sceneWidget()->renderer<GLSceneRenderer>();
-            GLSLSceneRenderer *sl = static_cast<GLSLSceneRenderer *>(glsr);
-            Matrix4 tmp = projection_L * scaleMatrix;
-            sl->setUserProjectionMatrix(tmp);
-        }
-        {
-            GLSceneRenderer *glsr = view_instances.at(2)->sceneWidget()->renderer<GLSceneRenderer>();
-            GLSLSceneRenderer *sl = static_cast<GLSLSceneRenderer *>(glsr);
-            Matrix4 tmp = projection_R * scaleMatrix;
-            sl->setUserProjectionMatrix(tmp);
-        }
-    }
-}
-
-void OpenVRPlugin::Impl::setEyeDifferenceScale(double scale)
-{
-    eyeToHead_L.pos = scale * eyeToHead_L_org.pos;
-    eyeToHead_R.pos = scale * eyeToHead_R_org.pos;
-}
-///追加関数///
-void OpenVRPlugin::Impl::setCameraOrigin(double l_joy_x,double l_joy_y,double r_joy_x,double r_joy_y)
-{   
-    double scale = 0.0075;
-    Vector3 localDirection(l_joy_x, l_joy_y,0);
-    Vector3 absoluteDirection = origin.rot * localDirection;
-    Vector3 displacement = absoluteDirection * scale;
-    origin.pos[0] -= displacement[0];
-    origin.pos[1] += displacement[1];
-    origin.pos[2] += r_joy_y*scale;
-}
-void OpenVRPlugin::Impl::rotateCamera(double joystickValue,double rotationscale){
-    double rotationAngle = (-1)*joystickValue * rotationscale;
-    if (std::abs(rotationAngle) > 1e-6) {
-        Vector3 rotationAxis = Vector3::UnitZ();
-        origin.rotate(rotationAngle, rotationAxis);
-    }
-}
-coordinates OpenVRPlugin::Impl::CameraOrigin(){
-    return HMD_coords;
-}
-void OpenVRPlugin::Impl::causeVive(unsigned int sec){
-    sw_vive = 1;
-    sec_count = sec;
-}
-void OpenVRPlugin::Impl::Vivemotion(vr::IVRSystem *m_pHMD){
-    if(sw_vive){
-        m_pHMD->TriggerHapticPulse(1, 1, sec_count);
-        m_pHMD->TriggerHapticPulse(2, 1, sec_count);
-        sw_vive=0;
-    }
-}
-///////////////////////
 #ifdef _WIN32
 bool OpenVRPlugin::Impl::getDeviceString(std::string &_res, int index, vr::TrackedDeviceProperty prop)
 {
@@ -541,14 +424,10 @@ void OpenVRPlugin::Impl::updatePoses()
                 continue;
             }
             // update controller pose
-            if (idx == 2) {
-                state_L.coords = origin;
-                state_L.coords.transform(origin_to_HMD);
-                state_L.coords.transform(devicePoses[idx]);
-            } else if (idx == 1) {
-                state_R.coords = origin;
-                state_R.coords.transform(origin_to_HMD);
-                state_R.coords.transform(devicePoses[idx]);
+            if (idx == 1) {
+                state_L.coords = devicePoses[idx];
+            } else if (idx == 2) {
+                state_R.coords = devicePoses[idx];
             } else {
                 /// more then 3 controller?
                 continue;
@@ -556,9 +435,9 @@ void OpenVRPlugin::Impl::updatePoses()
             // update controller state(button etc.)
             vr::VRControllerState_t state;
             m_pHMD->GetControllerState(idx, &state, sizeof(vr::VRControllerState_t));
-            if (idx == 2) {
+            if (idx == 1) {
                 setStateToStruct(state, state_L);
-            } else if (idx == 1) {
+            } else if (idx == 2) {
                 setStateToStruct(state, state_R);
             } else {
                 /// more then 3 controller?
@@ -575,11 +454,9 @@ void OpenVRPlugin::Impl::updatePoses()
     }
 
     updateControllerState(state_L, state_R);
-//pulse
-    
-//
+
     vr::VREvent_t event;
-    while(m_pHMD->PollNextEvent( &event, sizeof( event ) ) ) {
+    while( m_pHMD->PollNextEvent( &event, sizeof( event ) ) ) {
         switch( event.eventType ) {
         case vr::VREvent_TrackedDeviceDeactivated:
             break;
@@ -647,34 +524,6 @@ const char* OpenVRPlugin::description() const
     return text.c_str();
 }
 
-void OpenVRPlugin::setProjectionMatrix(double scale)
-{
-    impl->setProjectionMatrix(scale);
-}
-
-void OpenVRPlugin::setEyeDifferenceScale(double scale)
-{
-    impl->setEyeDifferenceScale(scale);
-}
-
-void OpenVRPlugin::setCameraOrigin(double l_joy_x,double l_joy_y,double r_joy_x,double r_joy_y)
-{
-    impl->setCameraOrigin(l_joy_x,l_joy_y,r_joy_x,r_joy_y);
-}
-void OpenVRPlugin::rotateCamera(double joystickValue,double rotationscale)
-{
-    impl->rotateCamera(joystickValue,rotationscale);
-}
-coordinates cnoid::OpenVRPlugin::CameraOrigin()
-{
-    return impl->CameraOrigin();
-}
-
-void cnoid::OpenVRPlugin::causeVive(unsigned int sec)
-{
-    impl->causeVive(sec);
-}
-
 SignalProxy<void(const controllerState &left, const controllerState &right)> OpenVRPlugin::sigUpdateControllerState()
 {
     return impl->updateControllerState;
@@ -683,53 +532,5 @@ SignalProxy<void(coordinates &headOrigin)> OpenVRPlugin::sigRequestHeadOrigin()
 {
     return impl->requestHeadOrigin;
 }
-///add///
-void OpenVRPlugin::Impl::loadOverlayTexture(const std::string& imagePath) {
-    QImage image(QString::fromStdString(imagePath));
-    if (image.isNull()) {
-        *os_ << "Failed to load overlay image: " << imagePath << std::endl;
-        return;
-    }
 
-    image = image.convertToFormat(QImage::Format_RGBA8888).mirrored();
-
-    glGenTextures(1, &overlayTextureId);
-    glBindTexture(GL_TEXTURE_2D, overlayTextureId);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image.width(), image.height(), 0, GL_RGBA, GL_UNSIGNED_BYTE, image.bits());
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glBindTexture(GL_TEXTURE_2D, 0);
-
-    *os_ << "Overlay texture loaded: " << overlayTextureId << std::endl;
-}
-
-void OpenVRPlugin::Impl::drawOverlayTexture() {
-    if (!overlayTextureId) {
-        return;
-    }
-
-    glDisable(GL_DEPTH_TEST);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glBindTexture(GL_TEXTURE_2D, overlayTextureId);
-
-    glBegin(GL_QUADS);
-
-    // 右隅に配置
-    float overlaySize = 0.1f; // 画像サイズの割合（フレームバッファの幅に対する割合）
-    float xStart = 0.9f;      // 右隅のX座標（0～1の範囲で指定）
-    float yStart = 0.9f;      // 上隅のY座標（0～1の範囲で指定）
-
-    glTexCoord2f(0.0f, 0.0f); glVertex2f(xStart, yStart);
-    glTexCoord2f(1.0f, 0.0f); glVertex2f(xStart + overlaySize, yStart);
-    glTexCoord2f(1.0f, 1.0f); glVertex2f(xStart + overlaySize, yStart - overlaySize);
-    glTexCoord2f(0.0f, 1.0f); glVertex2f(xStart, yStart - overlaySize);
-
-    glEnd();
-
-    glBindTexture(GL_TEXTURE_2D, 0);
-    glDisable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
-}
 CNOID_IMPLEMENT_PLUGIN_ENTRY(OpenVRPlugin);
