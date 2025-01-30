@@ -132,13 +132,12 @@ void OpenVRPlugin::Impl::initialize()
         *os_ << "scene less than 3" << std::endl;
         return;
     }
-#ifdef _WIN32
     origin.pos << -3.0, 0.0, 0.0;
     {
         Quaternion q(0.5, 0.5, -0.5, -0.5);
         origin_to_HMD.set(q);
     }
-
+#ifdef _WIN32
     vr::EVRInitError eError = vr::VRInitError_None;
     m_pHMD = vr::VR_Init( &eError, vr::VRApplication_Scene );
     if ( eError != vr::VRInitError_None ) {
@@ -238,7 +237,7 @@ void OpenVRPlugin::Impl::singleLoop()
 #ifdef _WIN32
     if (!!m_pHMD) {
         if (counter % 30 == 0) {
-            *os_ << "fps = " << (1000.0 * 30.0)/(qtimer.elapsed()+1) << std::endl;
+            // *os_ << "fps = " << (1000.0 * 30.0)/(qtimer.elapsed()+1) << std::endl;
             qtimer.start();
         }
         counter++;
@@ -325,10 +324,11 @@ void OpenVRPlugin::Impl::singleLoop()
     }
 #else
     if (counter % 30 == 0) {
-        *os_ << "fps = " << (1000.0 * 30.0)/(qtimer.elapsed()+1) << std::endl;
+        // *os_ << "fps = " << (1000.0 * 30.0)/(qtimer.elapsed()+1) << std::endl;
         qtimer.start();
     }
     counter++;
+    requestHeadOrigin(origin);
     std::vector<SceneView *> view_instances = SceneView::instances();
     if (view_instances.size() < 2) {
         *os_ << "scene less than 3" << std::endl;
