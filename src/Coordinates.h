@@ -1,3 +1,6 @@
+#ifndef __IRSL_COORDINATES_H__
+#define __IRSL_COORDINATES_H__
+
 #include <cnoid/EigenTypes>
 #include <cnoid/EigenUtil> // rotFromRpy
 #include <memory>
@@ -662,3 +665,4 @@ typedef std::shared_ptr< coordinates > coordinatesPtr;
     }
 
 }
+#endif // __IRSL_COORDINATES_H__

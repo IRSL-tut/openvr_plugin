@@ -37,8 +37,15 @@ public:
     virtual bool finalize() override;
     virtual const char* description() const override;
 
+    void setProjectionMatrix(double scale);
+    void setEyeDifferenceScale(double scale);
+    void setCameraOrigin(double l_joy_x,double l_joy_y,double r_joy_x,double r_joy_y);
+    void rotateCamera(double joystickValue,double rotationscale);
+    coordinates CameraOrigin();
+    void causeVive(unsigned int sec);
+
     //Signal
-    SignalProxy<bool(const controllerState &left, const controllerState &right)> sigUpdateControllerState();
+    SignalProxy<void(const controllerState &left, const controllerState &right)> sigUpdateControllerState();
     SignalProxy<void(coordinates &headOrigin)> sigRequestHeadOrigin();
 
     class Impl;
